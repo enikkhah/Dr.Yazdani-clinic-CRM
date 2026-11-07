@@ -1,0 +1,6 @@
+{
+  "name": "Dr. Yazdani Clinic CRM",
+  "description": "سامانه مدیریت بیماران و ارسال پیامک گروهی نوبت‌دهی بیمارستان‌های اصفهان ویژه مطب دکتر علیرضا یزدانی به همراه خروجی مستقیم Capacitor APK",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

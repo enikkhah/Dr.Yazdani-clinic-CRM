@@ -1,0 +1,6 @@
+{
+  "appId": "ir.narvanteam.cliniccrm",
+  "appName": "Dr Yazdani CRM",
+  "webDir": ".",
+  "bundledWebRuntime": false
+}
