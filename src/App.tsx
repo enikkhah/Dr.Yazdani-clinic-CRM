@@ -27,7 +27,7 @@ const BATCH_SIZE = 30;
 const APP_ICON_URL = '/assets/aistudio/1794122480792_5bfe6c5e.png';
 
 const DEFAULT_SMS_MESSAGE =
-  'بیمار گرامی، دکتر علیرضا یزدانی در تاریخ ... ساعت ... در بیمارستان سینا اصفهان حضور دارند. جهت هماهنگی ویزیت لطفا پاسخ دهید.';
+  'بیمار گرامی، دکتر علیرضا ایزدی در تاریخ ... ساعت ... در بیمارستان سینا اصفهان حضور دارند. جهت هماهنگی ویزیت لطفا پاسخ دهید.';
 
 function toPersianDigits(value: number | string): string {
   return String(value).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
@@ -76,7 +76,9 @@ export default function App() {
   const [smsMessage, setSmsMessage] = useState<string>(() => {
     try {
       const savedSms = localStorage.getItem(SMS_TEXT_STORAGE_KEY);
-      if (savedSms && savedSms.trim()) return savedSms;
+      if (savedSms && savedSms.trim()) {
+        return savedSms.replace(/یزدانی/g, 'ایزدی');
+      }
     } catch {
       // ignore storage errors
     }
@@ -189,7 +191,7 @@ export default function App() {
               {!iconError ? (
                 <img
                   src={APP_ICON_URL}
-                  alt="Dr Yazdani CRM"
+                  alt="Dr Izady CRM"
                   referrerPolicy="no-referrer"
                   onError={() => setIconError(true)}
                   className="w-full h-full object-cover"
@@ -199,7 +201,7 @@ export default function App() {
               )}
             </div>
             <h1 className="text-xs sm:text-base font-extrabold tracking-tight text-white leading-snug break-words">
-              سامانه مدیریت و اطلاع رسانی بیماران، Dr Yazdani CRM
+              سامانه مدیریت و اطلاع رسانی بیماران، Dr Izady CRM
             </h1>
           </div>
 
