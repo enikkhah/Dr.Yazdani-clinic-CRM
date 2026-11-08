@@ -1,4 +1,4 @@
-name: Build Android Release APK
+name: Build Android APK
 
 on:
   push:
@@ -7,25 +7,19 @@ on:
       - master
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
-permissions:
-  contents: write
-
 jobs:
   build-apk:
-    name: Build Signed Release APK with Capacitor
-    runs-on: ubuntu-24.04
+    name: Build APK with Capacitor
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
 
       - name: Install NPM Dependencies
         run: npm install --legacy-peer-deps
@@ -35,13 +29,19 @@ jobs:
           rm -f public/assets/aistudio/Screenshot*
           npm run build
 
-      - name: Remove old Android folder and Add Capacitor Android Platform
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Add and Sync Capacitor Android Platform
         run: |
           rm -rf android
           npx cap add android
           npx cap sync android
 
-      - name: Set Custom App Icon for Android Mipmaps
+      - name: Set Custom App Icon for Android APK
         run: |
           ICON_SRC="public/assets/aistudio/1794122480792_5bfe6c5e.png"
           if [ -f "$ICON_SRC" ]; then
@@ -56,69 +56,17 @@ jobs:
             done
           fi
 
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Generate Release Keystore and Configure Release Signing
-        working-directory: android
-        run: |
-          keytool -genkey -v -keystore app/release.keystore -alias dryazdani_release -keyalg RSA -keysize 2048 -validity 10000 -storepass dryazdani123456 -keypass dryazdani123456 -dname "CN=DrYazdani, OU=Clinic, O=NarvanTeam, L=Isfahan, C=IR"
-          python3 - <<'PY'
-          from pathlib import Path
-          gradle_file = Path("app/build.gradle")
-          if gradle_file.exists():
-              content = gradle_file.read_text()
-              signing_block = """
-              lint {
-                  checkReleaseBuilds false
-                  abortOnError false
-              }
-              signingConfigs {
-                  release {
-                      storeFile file('release.keystore')
-                      storePassword 'dryazdani123456'
-                      keyAlias 'dryazdani_release'
-                      keyPassword 'dryazdani123456'
-                  }
-              }
-          """
-              if "signingConfigs {" not in content:
-                  content = content.replace("defaultConfig {", signing_block + "\n    defaultConfig {")
-              old_release_block = """release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }"""
-              new_release_block = """release {
-            signingConfig signingConfigs.release
-            debuggable false
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }"""
-              if old_release_block in content:
-                  content = content.replace(old_release_block, new_release_block)
-              elif "release {" in content and "signingConfig" not in content:
-                  content = content.replace("release {", "release {\n            signingConfig signingConfigs.release\n            debuggable false")
-              gradle_file.write_text(content)
-          PY
-
       - name: Grant Execute Permission for Gradlew
-        working-directory: android
+        working-directory: ./android
         run: chmod +x gradlew
 
-      - name: Build Signed Release APK
-        working-directory: android
-        run: |
-          ./gradlew assembleRelease --no-daemon
-          mkdir -p ../dist-apk
-          cp app/build/outputs/apk/release/*.apk ../dist-apk/Dr-Yazdani-CRM-release.apk
+      - name: Build APK
+        working-directory: ./android
+        run: ./gradlew assembleDebug
 
-      - name: Upload Generated Release APK Artifact
-        uses: actions/upload-artifact@v6
+      - name: Upload Generated APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Dr-Yazdani-CRM-Release-APK
-          path: dist-apk/Dr-Yazdani-CRM-release.apk
+          name: Dr-Yazdani-CRM-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          overwrite: true
