@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android Release APK
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-apk:
-    name: Build Debug APK with Capacitor
+    name: Build Signed Release APK with Capacitor
     runs-on: ubuntu-latest
 
     steps:
@@ -39,31 +39,57 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Set Custom App Icon for Android APK
+      - name: Optimize and Set Custom App Icon for Android Mipmaps
         run: |
           ICON_SRC="public/assets/aistudio/1794122480792_5bfe6c5e.png"
           if [ -f "$ICON_SRC" ]; then
             rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            convert "$ICON_SRC" -resize 48x48 -strip PNG8:android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+            convert "$ICON_SRC" -resize 72x72 -strip PNG8:android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+            convert "$ICON_SRC" -resize 96x96 -strip PNG8:android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+            convert "$ICON_SRC" -resize 144x144 -strip PNG8:android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+            convert "$ICON_SRC" -resize 192x192 -strip PNG8:android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
             for dir in android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi; do
-              if [ -d "$dir" ]; then
-                cp "$ICON_SRC" "$dir/ic_launcher.png"
-                cp "$ICON_SRC" "$dir/ic_launcher_round.png"
-                cp "$ICON_SRC" "$dir/ic_launcher_foreground.png"
-              fi
+              cp "$dir/ic_launcher.png" "$dir/ic_launcher_round.png"
+              cp "$dir/ic_launcher.png" "$dir/ic_launcher_foreground.png"
             done
           fi
+
+      - name: Configure Signed Release Build and R8 Resource Shrinking
+        run: |
+          echo "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" | base64 -d > android/app/release.p12
+          cat << 'EOF' >> android/app/build.gradle
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release.p12")
+                      storePassword "dryazdani123456"
+                      keyAlias "dryazdani"
+                      keyPassword "dryazdani123456"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled true
+                      shrinkResources true
+                  }
+              }
+          }
+          EOF
 
       - name: Grant Execute Permission for Gradlew
         working-directory: ./android
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build Signed Release APK
         working-directory: ./android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
 
-      - name: Upload Generated APK Artifact
+      - name: Upload Generated Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Dr-Yazdani-CRM-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Dr-Yazdani-CRM-Release-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
