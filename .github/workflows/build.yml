@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android Release APK
 
 on:
   push:
@@ -7,9 +7,12 @@ on:
       - master
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-apk:
-    name: Build APK with Capacitor
+    name: Build Signed Release APK with Capacitor
     runs-on: ubuntu-latest
 
     steps:
@@ -19,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install NPM Dependencies
         run: npm install --legacy-peer-deps
@@ -34,15 +37,14 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap sync android
-          sed -i 's/networkTimeout=10000/networkTimeout=120000/g' android/gradle/wrapper/gradle-wrapper.properties
-          sed -i 's/-all\.zip/-bin.zip/g' android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Setup Java JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          cache: 'gradle'
+      - name: Bypass GitHub Gradle 504 Outage via Local Mirror Download
+        run: |
+          curl -fL --retry 5 -o /tmp/gradle-8.2.1-bin.zip "https://mirrors.cloud.tencent.com/gradle/gradle-8.2.1-bin.zip" || \
+          curl -fL --retry 5 -o /tmp/gradle-8.2.1-bin.zip "https://mirrors.aliyun.com/macports/distfiles/gradle/gradle-8.2.1-bin.zip" || \
+          curl -fL --retry 5 -o /tmp/gradle-8.2.1-bin.zip "https://services.gradle.org/distributions/gradle-8.2.1-bin.zip"
+          sed -i 's|distributionUrl=.*|distributionUrl=file\\:///tmp/gradle-8.2.1-bin.zip|g' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/networkTimeout=10000/networkTimeout=120000/g' android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Set Custom App Icon for Android APK
         run: |
@@ -59,17 +61,48 @@ jobs:
             done
           fi
 
+      - name: Setup Java JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Generate Release Keystore and Configure Release Signing
+        working-directory: ./android
+        run: |
+          keytool -genkey -v -keystore app/release.keystore -alias drizady_release -keyalg RSA -keysize 2048 -validity 10000 -storepass drizady123456 -keypass drizady123456 -dname "CN=DrIzady, OU=Clinic, O=NarvanTeam, L=Isfahan, C=IR"
+          node -e '
+            const fs = require("fs");
+            let content = fs.readFileSync("app/build.gradle", "utf8");
+            const signingBlock = `    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n    signingConfigs {\n        release {\n            storeFile file("release.keystore")\n            storePassword "drizady123456"\n            keyAlias "drizady_release"\n            keyPassword "drizady123456"\n        }\n    }\n    `;
+            content = content.replace("defaultConfig {", signingBlock + "defaultConfig {");
+            content = content.replace("release {", "release {\n            signingConfig signingConfigs.release\n            debuggable false");
+            fs.writeFileSync("app/build.gradle", content, "utf8");
+          '
+
       - name: Grant Execute Permission for Gradlew
         working-directory: ./android
         run: chmod +x gradlew
 
-      - name: Build APK
+      - name: Build Signed Release APK
         working-directory: ./android
-        run: ./gradlew assembleDebug --no-daemon || ./gradlew assembleDebug --no-daemon
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p ../dist-apk
+          cp app/build/outputs/apk/release/*.apk ../dist-apk/Dr-Izady-CRM-release.apk
 
-      - name: Upload Generated APK Artifact
+      - name: Upload Generated Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Dr-Izady-CRM-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Dr-Izady-CRM-Release-APK
+          path: dist-apk/Dr-Izady-CRM-release.apk
           if-no-files-found: error
+
+      - name: Publish APK to GitHub Releases
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v1.0.${{ github.run_number }}"
+          gh release create "$TAG" dist-apk/Dr-Izady-CRM-release.apk --title "Dr Izady CRM $TAG" --notes "نسخه نهایی و امضاشده اپلیکیشن مدیریت بیماران دکتر علیرضا ایزدی ($TAG)" || \
+          gh release upload "$TAG" dist-apk/Dr-Izady-CRM-release.apk --clobber
