@@ -61,11 +61,11 @@ jobs:
             done
           fi
 
-      - name: Setup Java JDK 21
+      - name: Setup Java JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: Generate Release Keystore and Configure Release Signing
         working-directory: ./android
@@ -74,9 +74,10 @@ jobs:
           node -e '
             const fs = require("fs");
             let content = fs.readFileSync("app/build.gradle", "utf8");
-            const signingBlock = `    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n    signingConfigs {\n        release {\n            storeFile file("release.keystore")\n            storePassword "drizady123456"\n            keyAlias "drizady_release"\n            keyPassword "drizady123456"\n        }\n    }\n    `;
-            content = content.replace("defaultConfig {", signingBlock + "defaultConfig {");
-            content = content.replace("release {", "release {\n            signingConfig signingConfigs.release\n            debuggable false");
+            content = content.replace(
+              "    buildTypes {\n        release {",
+              "    signingConfigs {\n        release {\n            storeFile file(\"release.keystore\")\n            storePassword \"drizady123456\"\n            keyAlias \"drizady_release\"\n            keyPassword \"drizady123456\"\n        }\n    }\n    lint {\n        checkReleaseBuilds false\n        abortOnError false\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            debuggable false"
+            );
             fs.writeFileSync("app/build.gradle", content, "utf8");
           '
 
