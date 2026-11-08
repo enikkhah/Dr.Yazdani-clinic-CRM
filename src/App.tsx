@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   UserPlus,
   Users,
@@ -9,8 +9,12 @@ import {
   Phone,
   Sun,
   Moon,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Upload
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 
 interface Patient {
   id: string;
@@ -23,6 +27,7 @@ interface Patient {
 const STORAGE_KEY = 'dr_yazdani_crm_patients_v1';
 const SMS_TEXT_STORAGE_KEY = 'dr_yazdani_crm_sms_text_v1';
 const THEME_STORAGE_KEY = 'dr_yazdani_crm_theme_v1';
+const BACKUP_FILE_NAME = 'Dr-Izady-CRM-Backup.json';
 const BATCH_SIZE = 30;
 const APP_ICON_URL = '/assets/aistudio/1794122480792_5bfe6c5e.png';
 
@@ -88,6 +93,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [iconError, setIconError] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -123,7 +129,7 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 2200);
+    }, 2500);
   };
 
   const handleAddPatient = (e: React.FormEvent) => {
@@ -157,6 +163,123 @@ export default function App() {
     setPatients([]);
     setConfirmClearAll(false);
     showToast('لیست بیماران پاک شد');
+  };
+
+  const applyBackupContent = (rawText: string) => {
+    try {
+      const parsed = JSON.parse(rawText);
+      const incomingPatients: Patient[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.patients)
+        ? parsed.patients
+        : [];
+
+      const validPatients = incomingPatients
+        .filter((p) => p && typeof p.phone === 'string' && p.phone.trim() !== '')
+        .map((p, idx) => ({
+          id: p.id || `${Date.now()}_restored_${idx}`,
+          fullName: getPatientDisplayName(p) || 'بیمار',
+          phone: normalizePhone(p.phone)
+        }));
+
+      if (validPatients.length === 0 && !parsed?.smsMessage) {
+        showToast('فایل انتخاب‌شده معتبر نیست یا خالی است');
+        return;
+      }
+
+      if (validPatients.length > 0) {
+        setPatients((prev) => {
+          const existingPhones = new Set(prev.map((item) => item.phone));
+          const uniqueIncoming = validPatients.filter(
+            (item) => !existingPhones.has(item.phone)
+          );
+          return [...uniqueIncoming, ...prev];
+        });
+      }
+
+      if (typeof parsed?.smsMessage === 'string' && parsed.smsMessage.trim()) {
+        setSmsMessage(parsed.smsMessage.replace(/یزدانی/g, 'ایزدی'));
+      }
+
+      showToast(
+        `${toPersianDigits(validPatients.length)} بیمار با موفقیت فراخوانی شد`
+      );
+    } catch {
+      showToast('خطا در خواندن فایل پشتیبان');
+    }
+  };
+
+  const handleBackup = async () => {
+    if (patients.length === 0) {
+      showToast('لیست بیماران برای پشتیبان‌گیری خالی است');
+      return;
+    }
+
+    const payload = JSON.stringify(
+      {
+        app: 'Dr Izady CRM',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        smsMessage,
+        patients
+      },
+      null,
+      2
+    );
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Filesystem.writeFile({
+          path: BACKUP_FILE_NAME,
+          data: payload,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+          recursive: true
+        });
+        showToast('فایل پشتیبان در پوشه Documents گوشی ذخیره شد');
+        return;
+      } catch {
+        // Fallback to browser download if native write fails
+      }
+    }
+
+    try {
+      const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = BACKUP_FILE_NAME;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('فایل پشتیبان در پوشه Downloads ذخیره شد');
+    } catch {
+      showToast('خطا در ایجاد فایل پشتیبان');
+    }
+  };
+
+  const handleRestoreClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        applyBackupContent(reader.result);
+      }
+    };
+    reader.onerror = () => {
+      showToast('خطا در باز کردن فایل انتخابی');
+    };
+    reader.readAsText(file, 'UTF-8');
   };
 
   const filteredPatients = useMemo(() => {
@@ -370,6 +493,34 @@ export default function App() {
           {/* Column 2: Saved Patient List */}
           <div className="lg:col-span-7 min-w-0">
             <section className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs">
+              {/* Backup & Restore Side-by-Side Buttons Above Patient List */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json,text/plain"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                <button
+                  type="button"
+                  onClick={handleBackup}
+                  className="min-h-[46px] px-3 py-2.5 rounded-xl bg-[#00796B] hover:bg-[#00695C] active:scale-[0.99] text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4 shrink-0" />
+                  <span>پشتیبان‌گیری</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRestoreClick}
+                  className="min-h-[46px] px-3 py-2.5 rounded-xl bg-[#FFB020] hover:bg-[#F59E0B] active:scale-[0.99] text-slate-950 font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+                >
+                  <Upload className="w-4 h-4 shrink-0" />
+                  <span>فراخوانی</span>
+                </button>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3.5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[#E0F2F1] dark:bg-teal-950/70 text-[#00796B] dark:text-teal-400 flex items-center justify-center shrink-0">
