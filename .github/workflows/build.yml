@@ -39,6 +39,20 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Set Custom App Icon for Android APK
+        run: |
+          ICON_SRC="public/assets/aistudio/1794122480792_5bfe6c5e.png"
+          if [ -f "$ICON_SRC" ]; then
+            rm -rf android/app/src/main/res/mipmap-anydpi-v26
+            for dir in android/app/src/main/res/mipmap-mdpi android/app/src/main/res/mipmap-hdpi android/app/src/main/res/mipmap-xhdpi android/app/src/main/res/mipmap-xxhdpi android/app/src/main/res/mipmap-xxxhdpi; do
+              if [ -d "$dir" ]; then
+                cp "$ICON_SRC" "$dir/ic_launcher.png"
+                cp "$ICON_SRC" "$dir/ic_launcher_round.png"
+                cp "$ICON_SRC" "$dir/ic_launcher_foreground.png"
+              fi
+            done
+          fi
+
       - name: Grant Execute Permission for Gradlew
         working-directory: ./android
         run: chmod +x gradlew

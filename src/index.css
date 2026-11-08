@@ -1,12 +1,18 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
+  html,
   body {
     font-family: 'Vazirmatn', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     direction: rtl;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
-  code, pre, .font-mono {
+  code,
+  pre,
+  .font-mono {
     font-family: 'JetBrains Mono', monospace;
   }
 }
